@@ -45,10 +45,10 @@ logger = Logger(log_dir=log_dir, tensorboard=True, matplotlib=True)
 
 
 #hyperparams
-warmup_epochs = 10
+warmup_epochs = 50 
 warmup_lr = 0
 base_lr = 0.03
-final_lr = 0
+final_lr = 0.00001
 num_epochs = 800 # this parameter influence the lr decay
 stop_at_epoch = 50 # has to be smaller than num_epochs
 batch_size = 128
