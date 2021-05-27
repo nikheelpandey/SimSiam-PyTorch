@@ -93,3 +93,27 @@ def get_train_test_dataloaders(dataset = "stl10", data_dir="./dataset", batch_si
         num_workers = num_workers
         )
     return train_loader, test_loader
+
+
+def get_train_mem_test_dataloaders(dataset = "cifar10", data_dir="./dataset", batch_size = 16,num_workers = 4, download=True): 
+    
+    train_loader = torch.utils.data.DataLoader(
+        dataset = torchvision.datasets.CIFAR10(data_dir, train=True, transform=InitalTransformation(), download=download),
+        shuffle=True,
+        batch_size= batch_size,
+        num_workers = num_workers
+    )
+    
+    memory_loader = torch.utils.data.DataLoader(
+        dataset = torchvision.datasets.CIFAR10(data_dir, train=False, transform=InitalTransformation(), download=download),
+        shuffle=False,
+        batch_size= batch_size,
+        num_workers = num_workers
+    )
+    test_loader = torch.utils.data.DataLoader(
+        dataset = torchvision.datasets.CIFAR10(data_dir, train=False, transform=InitalTransformation(), download=download),
+        shuffle=True,
+        batch_size= batch_size,
+        num_workers = num_workers
+        )
+    return train_loader, memory_loader, test_loader
