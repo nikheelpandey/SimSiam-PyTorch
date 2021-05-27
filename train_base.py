@@ -3,16 +3,14 @@ import time
 import torch 
 import numpy as np
 from tqdm import tqdm 
-from lars import LARS
 from logger import Logger
 import torch.optim as optim
 from datetime import datetime 
-from loss import ContrastiveLoss
 from lr_scheduler import LR_Scheduler
 from tensorboardX import SummaryWriter
 from torchvision.models import resnet18
 from dataset_loader import  gpu_transformer
-from model import ContrastiveModel, get_backbone
+from model import SimSiam
 from knn_monitor import knn_monitor as accuracy_monitor
 from dataset_loader import get_train_mem_test_dataloaders
 
@@ -27,7 +25,7 @@ else:
 
 
 uid = 'simsiam'
-dataset_name = 'stl10'
+dataset_name = 'cifar10'
 data_dir = 'dataset'
 ckpt_dir = "./ckpt/"+str(datetime.now().strftime('%m%d%H%M%S'))
 log_dir = "runs/"+str(datetime.now().strftime('%m%d%H%M%S'))
@@ -47,29 +45,17 @@ logger = Logger(log_dir=log_dir, tensorboard=True, matplotlib=True)
 
 
 #hyperparams
-features = 128
-batch_size = batch = 512
-epochs = 25 #use num_epochs if you have time and resources to train. Else, for POC, 25 epochs should yield a decreasing loss. 
-lr = 1e-4
-device_id = 0
-weight_decay  = 1.e-6
+warmup_epochs = 10
+warmup_lr = 0
+base_lr = 0.03
+final_lr = 0
+num_epochs = 800 # this parameter influence the lr decay
+stop_at_epoch = 50 # has to be smaller than num_epochs
+batch_size = 128
+knn_interval =  3
+knn_k = 80
 
-image_size = (92,92)
-momentum = 0.9
-
-warmup_epochs =  10
-warmup_lr  =     0
-base_lr =    0.3
-final_lr =   0
-num_epochs =     800 # this parameter influence the lr decay
-stop_at_epoch =  100 # has to be smaller than num_epochs
-batch_size =     256
-knn_monitor =    False # knn monitor will take more time
-knn_interval =   5
-knn_k =      200
-
-min_loss = np.inf #ironic
-accuracy = 0
+image_size = (32,32)
 
 train_loader, memory_loader, test_loader = get_train_mem_test_dataloaders(
                 dataset="cifar10", 
@@ -81,7 +67,29 @@ train_loader, memory_loader, test_loader = get_train_mem_test_dataloaders(
 train_transform , test_transform = gpu_transformer(image_size)
 
 
-optimizer = torch.optim.SGD(model, lr=lr, momentum=momentum, weight_decay=weight_decay)
+# model
+model = SimSiam().to(device)
+
+# optimizer
+momentum = 0.9
+weight_decay = 0.0005
+
+
+predictor_prefix = ('module.predictor', 'predictor')
+parameters = [{
+    'name': 'base',
+    'params': [param for name, param in model.named_parameters() if not name.startswith(predictor_prefix)],
+    'lr': base_lr
+},{
+    'name': 'predictor',
+    'params': [param for name, param in model.named_parameters() if name.startswith(predictor_prefix)],
+    'lr': base_lr
+    }]
+
+
+
+
+optimizer = torch.optim.SGD(parameters, lr=base_lr, momentum=momentum, weight_decay=weight_decay)
 
 scheduler = LR_Scheduler(
     optimizer, warmup_epochs, warmup_lr*batch_size/256,
@@ -91,20 +99,21 @@ scheduler = LR_Scheduler(
     constant_predictor_lr=True 
     )
 
-
-global_progress = tqdm(range(0, epochs), desc=f'Training')
+min_loss = np.inf
+global_progress = tqdm(range(0, stop_at_epoch), desc=f'Training')
 data_dict = {"loss": 100}
+
+
 for epoch in global_progress:
     model.train()   
-    local_progress = tqdm(train_loader, desc=f'Epoch {epoch}/{epochs}')
+    local_progress = tqdm(train_loader, desc=f'Epoch {epoch}/{num_epochs}')
     
     for idx, (image, label) in enumerate(local_progress):
         image = image.to(device)
-        aug_image = train_transform(image)
+        aug_image = train_transform(image).to(device)
         model.zero_grad()
-        z = model.forward(image.to(device, non_blocking=True))
-        z_= model.forward(aug_image.to(device, non_blocking=True))
-        loss = loss_func(z,z_) 
+        ret = model.forward(image,aug_image)
+        loss = ret 
         data_dict['loss'] = loss.item() 
         loss.backward()
         optimizer.step()
@@ -115,10 +124,11 @@ for epoch in global_progress:
     
     current_loss = data_dict['loss']
 
-    if epoch % knn_interval == 0: 
+    '''if epoch % knn_interval == 0: 
         accuracy = accuracy_monitor(model.backbone, memory_loader, test_loader, 'cpu', hide_progress=True) 
         data_dict['accuracy'] = accuracy
-    
+    '''
+
     global_progress.set_postfix(data_dict)
     logger.update_scalers(data_dict)
     
