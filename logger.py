@@ -1,4 +1,4 @@
-rom tensorboardX import SummaryWriter
+from tensorboardX import SummaryWriter
 
 from torch import Tensor
 from collections import OrderedDict
