@@ -29,6 +29,13 @@ SGD with `momentum = 0.95` and `weight_decay=0.0005`
 
 ## Performance
 Here's the loss on CIFAR10
+Color|Batch_size|Loss|epochs|
+|---|---|---|---|
+|green|512|-0.906|50|
+|pink|256|-0.901|50|
+|orange|512|-0.919|150|
+
+
 ![Loss](loss_simsiam.png)
 
 LR Scheduling
